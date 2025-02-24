@@ -1,19 +1,28 @@
 import os
 from dotenv import load_dotenv
 from slack_bolt import App
-from slack_bolt.adapter.socket_mode import SocketModeHandler
+from slack_bolt.adapter.flask import SlackRequestHandler
+from flask import Flask, request, jsonify
 from googleapiclient.discovery import build
 from openai import OpenAI
 
-
 load_dotenv()
 
-slack_app = App(token=os.getenv("SLACK_BOT_TOKEN"))
-# handler = SocketModeHandler(slack_app)
-
+# Initialize apps
+slack_app = App(token=os.getenv("SLACK_BOT_TOKEN"), signing_secret=os.getenv("SLACK_SIGNING_SECRET"))
+flask_app = Flask(__name__)
+handler = SlackRequestHandler(slack_app)
 youtube = build('youtube', 'v3', developerKey=os.getenv("YOUTUBE_API_KEY"))
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Add route for Slack events
+@flask_app.route("/slack/events", methods=["POST"])
+def slack_events():
+    # Handle URL verification challenge
+    if request.json.get("type") == "url_verification":
+        return jsonify({"challenge": request.json["challenge"]})
+    # Handle all other events
+    return handler.handle(request)
 
 @slack_app.message("knock knock")
 def ask_who(message, say):
@@ -49,6 +58,5 @@ def handle_mention(event, say):
 def handle_message(body, logger):
     print(body)
 
-
 if __name__ == "__main__":
-    SocketModeHandler(slack_app, os.getenv("SLACK_APP_TOKEN")).start()
+    flask_app.run(port=3000)
